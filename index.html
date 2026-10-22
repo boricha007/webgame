@@ -1,0 +1,238 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Web Collection</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 40px 20px;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0b1020;
+      color: #eef2ff;
+    }
+
+    main {
+      max-width: 900px;
+      margin: auto;
+    }
+
+    h1 {
+      font-size: clamp(28px, 5vw, 42px);
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #9ca9c7;
+      margin-bottom: 28px;
+    }
+
+    #search {
+      width: 100%;
+      padding: 14px 16px;
+      border: 1px solid #303b59;
+      border-radius: 12px;
+      background: #151d33;
+      color: white;
+      font-size: 16px;
+      outline: none;
+      margin-bottom: 18px;
+    }
+
+    #search:focus { border-color: #818cf8; }
+
+    #status {
+      color: #a5b4fc;
+      margin: 12px 0;
+    }
+
+    #list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+    }
+
+    .item {
+      display: block;
+      padding: 20px;
+      background: #151d33;
+      border: 1px solid #293550;
+      border-radius: 14px;
+      color: inherit;
+      text-decoration: none;
+      transition: transform .15s, border-color .15s;
+      overflow-wrap: anywhere;
+    }
+
+    .item:hover {
+      transform: translateY(-3px);
+      border-color: #818cf8;
+      background: #1a2540;
+    }
+
+    .item strong {
+      display: block;
+      font-size: 17px;
+      margin-bottom: 8px;
+    }
+
+    .item small {
+      color: #9ca9c7;
+    }
+
+    .empty {
+      color: #9ca9c7;
+      padding: 24px 0;
+    }
+
+    footer {
+      margin-top: 32px;
+      color: #64748b;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>🌐 My Web Collection</h1>
+  <p class="subtitle">저장소에 등록된 웹페이지를 한곳에서 실행하세요.</p>
+
+  <input
+    id="search"
+    type="search"
+    placeholder="HTML 파일 검색..."
+    aria-label="HTML 파일 검색"
+  >
+
+  <p id="status">HTML 파일 목록을 불러오는 중...</p>
+  <section id="list"></section>
+
+  <footer>
+    Powered by GitHub Pages · HTML 파일 자동 검색
+  </footer>
+</main>
+
+<script>
+(async function () {
+  const status = document.getElementById("status");
+  const list = document.getElementById("list");
+  const search = document.getElementById("search");
+
+  // GitHub Pages 주소에서 사용자명과 저장소 이름 자동 추출
+  const host = location.hostname;
+  const parts = location.pathname.split("/").filter(Boolean);
+
+  let owner, repo;
+
+  if (host.endsWith(".github.io")) {
+    owner = host.replace(/\.github\.io$/, "");
+    repo = parts[0] || "";
+  } else {
+    status.textContent =
+      "GitHub Pages 주소를 확인할 수 없습니다. 저장소 설정을 확인하세요.";
+    return;
+  }
+
+  if (!repo) {
+    status.textContent =
+      "저장소 이름을 확인할 수 없습니다. 프로젝트 페이지에서 접속하세요.";
+    return;
+  }
+
+  const api =
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/` +
+    `${encodeURIComponent(repo)}/git/trees/HEAD?recursive=1`;
+
+  let files = [];
+
+  try {
+    const response = await fetch(api);
+
+    if (!response.ok) {
+      throw new Error(
+        response.status === 404
+          ? "저장소를 찾을 수 없습니다."
+          : `GitHub API 오류 (${response.status})`
+      );
+    }
+
+    const data = await response.json();
+
+    if (data.truncated) {
+      throw new Error("파일이 너무 많아 목록을 전부 가져오지 못했습니다.");
+    }
+
+    files = (data.tree || [])
+      .filter(item =>
+        item.type === "blob" &&
+        /\.html?$/i.test(item.path) &&
+        !/^index\.html?$/i.test(item.path)
+      )
+      .sort((a, b) => a.path.localeCompare(b.path));
+
+    if (files.length === 0) {
+      status.textContent = "표시할 HTML 파일이 없습니다.";
+      return;
+    }
+
+    status.textContent = `HTML 파일 ${files.length}개`;
+
+    function render() {
+      const query = search.value.trim().toLowerCase();
+      const filtered = files.filter(file =>
+        file.path.toLowerCase().includes(query)
+      );
+
+      list.replaceChildren();
+
+      if (filtered.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "empty";
+        empty.textContent = "검색 결과가 없습니다.";
+        list.appendChild(empty);
+        return;
+      }
+
+      for (const file of filtered) {
+        const link = document.createElement("a");
+        link.className = "item";
+
+        // 프로젝트 페이지와 사용자 페이지 모두 지원
+        const base = location.origin +
+          (parts.length ? "/" + parts[0] : "");
+
+        link.href = base + "/" +
+          file.path.split("/").map(encodeURIComponent).join("/");
+
+        const title = document.createElement("strong");
+        title.textContent =
+          "📄 " + file.path.split("/").pop().replace(/\.html?$/i, "");
+
+        const path = document.createElement("small");
+        path.textContent = file.path;
+
+        link.append(title, path);
+        list.appendChild(link);
+      }
+    }
+
+    search.addEventListener("input", render);
+    render();
+
+  } catch (error) {
+    status.textContent = error.message;
+    const help = document.createElement("p");
+    help.className = "empty";
+    help.textContent =
+      "저장소 공개 여부, GitHub API 접근 가능 여부와 Pages 설정을 확인하세요.";
+    list.appendChild(help);
+  }
+})();
+</script>
+</body>
+</html>
